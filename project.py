@@ -20,9 +20,9 @@ from scipy.optimize import minimize
 from sklearn.svm import SVR
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import StandardScaler
-import tensorflow.compat.v1 as tf
+# import tensorflow.compat.v1 as tf
 
-tf.disable_v2_behavior()
+# tf.disable_v2_behavior()
 
 
 # import tensorflow.compat.v1 as tf
@@ -48,10 +48,11 @@ def remove(x):
 
 data = yf.download(coin_name + "-USD", period="max")
 
-st.subheader("DataSet")
+st.subheader("Dataset")
 st.write(data)
 
 data.index = pd.to_datetime(data.index, format="%Y-%m-%d")
+years_available = data.index.year.unique()
 data.index = data.index.to_series().apply(
     lambda x: remove(x)
 )  # applying preprocessing function
@@ -65,6 +66,11 @@ with Eda:
     shape = data.shape
     st.write(shape)
 
+    st.subheader('Total number of days present in the dataset: ',)
+    st.write(shape[0])
+    st.subheader('Total number of fields present in the dataset: ',)
+    st.write(shape[1])
+
     st.subheader("Head")
     head = data.head()
     st.write(head)
@@ -73,24 +79,16 @@ with Eda:
     tail = data.tail()
     st.write(tail)
 
-    st.subheader("Info")
-    info = data.info
-    st.write(info)
-
     st.subheader("Describe")
     describe = data.describe()
     st.write(describe)
 
-    st.subheader("Index")
-    index = data.index
-    st.write(index)
-
     st.subheader("Null Values")
     st.write("Null Values:", data.isnull().values.sum())
     st.write("NA values:", data.isnull().values.any())
-    st.info("This Shows that there are no null values")
+    st.info("This shows that there are no null values")
 
-    st.title("Year Wise Distribution Of The DataSet")
+    st.title(f"Analysis of the {coin_name}")
 
     new_order = [
         "January",
@@ -218,61 +216,184 @@ with Eda:
         )
         st.plotly_chart(fig)
 
-    # Input for start and end dates
-    start_date = st.date_input("Start date")
-    end_date = st.date_input("End date")
+    st.subheader(f"Volume Heatmap for {coin_name}")
+    data_copy = data.copy()
+    data_copy.index = pd.to_datetime(data_copy.index, format="%Y-%m-%d")
+    data_copy["Month"] = data_copy.index.month
+    data_copy["Year"] = data_copy.index.year
+    grouped_data = (
+        data_copy.groupby(["Year", "Month"])["Volume"].sum().reset_index()
+    )
+    grouped_data["Month"] = grouped_data["Month"].apply(
+        lambda x: calendar.month_name[x]
+    )
+    x = grouped_data.pivot_table(
+        index="Year", columns="Month", values="Volume", aggfunc="sum"
+    )
+    x.columns = pd.Categorical(x.columns, categories=new_order, ordered=True)
+    x = x.sort_index(axis=1)
 
-    if start_date and end_date:
-        start_date = start_date.strftime("%Y-%m-%d")
-        end_date = end_date.strftime("%Y-%m-%d")
+    # Plotting heatmap with Plotly
+    fig_heatmap = go.Figure(
+        data=go.Heatmap(z=x.values, x=x.columns, y=x.index, colorscale="Viridis")
+    )
+    fig_heatmap.update_layout(
+        xaxis_title="Month",
+        yaxis_title="Year",
+    )
+    st.plotly_chart(fig_heatmap)
 
-    if st.button("Analyze"):
-        year_2014 = yearly_analysis(start_date, end_date)
-        monthly_2014 = every_year_monthwise_analysis(year_2014)
+    st.subheader(f"Daily Simple Return for {coin_name}")
+    DSR = data["Close"].pct_change(1)
+    st.write(DSR.describe())
+    st.markdown(f"""
+**Interpretation**
+\n\nAbove data shows 4 important things ( if you are investing daily in {coin_name} ).
+\n- If we invest in the {coin_name}, we would get approx {round(DSR.mean()*100,2)}% of our investment on daily basis as the return.
+\n- Someday we have lost {round(DSR.min()*-100,2)}% of our investment or price has decreased {round(DSR.min()*-100,2)}% in a day.
+\n- Someday we have made {round(DSR.max()*100,2)}% of our investment or price has increased {round(DSR.max()*100,2)}% in a day.
+\n- {coin_name} is {round(DSR.std()*100,2)}% volatile.
+""")
+    
+    st.title(f"Yearly Analysis of the {coin_name}")
 
-        st.subheader(f"Yearly Chart for {coin_name}")
-        yearly_chart(year_2014)
+    st.info("Click on the year for yearly analysis of that year")
 
-        st.subheader(f"Monthly Open and Close Chart for {coin_name}")
-        monthly_open_close_chart(monthly_2014)
+    for i in range(len(years_available)):
 
-        st.subheader(f"Monthly High and Low Chart for {coin_name}")
-        monthly_high_low_chart(year_2014)
+        if st.button(f'{years_available[i]}',f'{years_available[i]}'):
+            if(years_available[i]) == 2014:
+                year_2014 = yearly_analysis('2014-01-01', '2014-12-31')
+                monthly_2014 = every_year_monthwise_analysis(year_2014)
 
-        st.subheader(f"Heatmap of Monthly Volume for {coin_name}")
-        data_copy = data.copy()
-        data_copy.index = pd.to_datetime(data_copy.index, format="%Y-%m-%d")
-        data_copy["Month"] = data_copy.index.month
-        data_copy["Year"] = data_copy.index.year
-        grouped_data = (
-            data_copy.groupby(["Year", "Month"])["Volume"].sum().reset_index()
-        )
-        grouped_data["Month"] = grouped_data["Month"].apply(
-            lambda x: calendar.month_name[x]
-        )
-        x = grouped_data.pivot_table(
-            index="Year", columns="Month", values="Volume", aggfunc="sum"
-        )
-        x.columns = pd.Categorical(x.columns, categories=new_order, ordered=True)
-        x = x.sort_index(axis=1)
+                st.subheader(f"2014 Yearly Chart for {coin_name}")
+                yearly_chart(year_2014)
 
-        # Plotting heatmap with Plotly
-        fig_heatmap = go.Figure(
-            data=go.Heatmap(z=x.values, x=x.columns, y=x.index, colorscale="Viridis")
-        )
-        fig_heatmap.update_layout(
-            title=f"Heatmap of Monthly Volume for {coin_name}",
-            xaxis_title="Month",
-            yaxis_title="Year",
-        )
-        st.plotly_chart(fig_heatmap)
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2014)
 
-        DSR = data["Close"].pct_change(1)
-        st.write(DSR)
-        st.write(DSR.describe())
-        st.info(
-            f"if we invest in {coin_name}, we can approx get 0.2% return daily  investment has gome to 37% daily loss sometimes investment has gone to 25% daily profit sometimes ( max price increased in a day is 25% "
-        )
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2014)
+            elif(years_available[i]) == 2015:
+                year_2015 = yearly_analysis('2015-01-01', '2015-12-31')
+                monthly_2015 = every_year_monthwise_analysis(year_2015)
+
+                st.subheader(f"2015 Yearly Chart for {coin_name}")
+                yearly_chart(year_2015)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2015)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2015)
+            elif(years_available[i]) == 2016:
+                year_2016 = yearly_analysis('2016-01-01', '2016-12-31')
+                monthly_2016 = every_year_monthwise_analysis(year_2016)
+
+                st.subheader(f"2016 Yearly Chart for {coin_name}")
+                yearly_chart(year_2016)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2016)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2016)
+            elif(years_available[i]) == 2017:
+                year_2017 = yearly_analysis('2017-01-01', '2017-12-31')
+                monthly_2017 = every_year_monthwise_analysis(year_2017)
+
+                st.subheader(f"2017 Yearly Chart for {coin_name}")
+                yearly_chart(year_2017)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2017)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2017)
+            elif(years_available[i]) == 2018:
+                year_2018 = yearly_analysis('2018-01-01', '2018-12-31')
+                monthly_2018 = every_year_monthwise_analysis(year_2018)
+
+                st.subheader(f"2018 Yearly Chart for {coin_name}")
+                yearly_chart(year_2018)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2018)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2018)
+            elif(years_available[i]) == 2019:
+                year_2019 = yearly_analysis('2019-01-01', '2019-12-31')
+                monthly_2019 = every_year_monthwise_analysis(year_2019)
+
+                st.subheader(f"2019 Yearly Chart for {coin_name}")
+                yearly_chart(year_2019)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2019)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2019)
+            elif(years_available[i]) == 2020:
+                year_2020 = yearly_analysis('2020-01-01', '2020-12-31')
+                monthly_2020 = every_year_monthwise_analysis(year_2020)
+
+                st.subheader(f"2020 Yearly Chart for {coin_name}")
+                yearly_chart(year_2020)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2020)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2020)
+            elif(years_available[i]) == 2021:
+                year_2021 = yearly_analysis('2021-01-01', '2021-12-31')
+                monthly_2021 = every_year_monthwise_analysis(year_2021)
+
+                st.subheader(f"2021 Yearly Chart for {coin_name}")
+                yearly_chart(year_2021)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2021)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2021)
+            elif(years_available[i]) == 2022:
+                year_2022 = yearly_analysis('2022-01-01', '2022-12-31')
+                monthly_2022 = every_year_monthwise_analysis(year_2022)
+
+                st.subheader(f"2022 Yearly Chart for {coin_name}")
+                yearly_chart(year_2022)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2022)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2022)
+            elif(years_available[i]) == 2023:
+                year_2023 = yearly_analysis('2023-01-01', '2023-12-31')
+                monthly_2023 = every_year_monthwise_analysis(year_2023)
+
+                st.subheader(f"2023 Yearly Chart for {coin_name}")
+                yearly_chart(year_2023)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2023)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2023)
+            elif(years_available[i]) == 2024:
+                year_2024 = yearly_analysis('2024-01-01', '2024-12-31')
+                monthly_2024 = every_year_monthwise_analysis(year_2024)
+
+                st.subheader(f"2024 Yearly Chart for {coin_name}")
+                yearly_chart(year_2024)
+
+                st.subheader(f"Monthly Open and Close Chart for {coin_name}")
+                monthly_open_close_chart(monthly_2024)
+
+                st.subheader(f"Monthly High and Low Chart for {coin_name}")
+                monthly_high_low_chart(year_2024)
 
 
 with DataPreprocessing:
@@ -666,177 +787,124 @@ with Models:
                     y_pred = np.dot(X, self.weights) + self.bias
                     return y_pred
 
+            
             lr_scratch = LinearRegressionScratch(lr=0.01)
             lr_scratch.fit(X_train, y_train)
+
+
             (
                 lr_scratch_mse_value,
                 lr_scratch_rmse_value,
                 lr_scratch_r2_value,
                 lr_scratch_mae_value,
             ) = evaluate_model(lr_scratch, X_test, y_test)
+
+
             st.write(f"LR (w/o package) MSE: {lr_scratch_mse_value}")
             st.write(f"LR (w/o package) RMSE: {lr_scratch_rmse_value}")
             st.write(f"LR (w/o package) R-squared: {lr_scratch_r2_value}")
             st.write(f"LR (w/o package) MAE: {lr_scratch_mae_value}")
 
-            st.title("SVM Model")
+       
+            lr_scratch_predictions = lr_scratch.predict(X_test)
+            rf_scratch_predictions = rf_scratch.predict(X_test)
 
-            class SVRscratch(object):
-                def __init__(self, epsilon=0.5):
-                    self.epsilon = epsilon
-
-                def fit(self, X, y, epochs=100, learning_rate=0.1):
-                    self.sess = tf.Session()
-
-                    feature_len = X.shape[-1] if len(X.shape) > 1 else 1
-
-                    if len(X.shape) == 1:
-                        X = X.reshape(-1, 1)
-                    if len(y.shape) == 1:
-                        y = y.reshape(-1, 1)
-
-                    self.X = tf.placeholder(dtype=tf.float32, shape=(None, feature_len))
-                    self.y = tf.placeholder(dtype=tf.float32, shape=(None, 1))
-
-                    self.W = tf.Variable(tf.random_normal(shape=(feature_len, 1)))
-                    self.b = tf.Variable(tf.random_normal(shape=(1,)))
-
-                    self.y_pred = tf.matmul(self.X, self.W) + self.b
-
-                    # self.loss = tf.reduce_mean(tf.square(self.y - self.y_pred))
-                    # self.loss = tf.reduce_mean(tf.cond(self.y_pred - self.y < self.epsilon, lambda: 0, lambda: 1))
-
-                    # Second part of following equation, loss is a function of how much the error exceeds a defined value, epsilon
-                    # Error lower than epsilon = no penalty.
-                    self.loss = tf.norm(self.W) / 2 + tf.reduce_mean(
-                        tf.maximum(0.0, tf.abs(self.y_pred - self.y) - self.epsilon)
-                    )
-                    #         self.loss = tf.reduce_mean(tf.maximum(0., tf.abs(self.y_pred - self.y) - self.epsilon))
-
-                    opt = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
-                    opt_op = opt.minimize(self.loss)
-
-                    self.sess.run(tf.global_variables_initializer())
-
-                    for i in range(epochs):
-                        loss = self.sess.run(self.loss, {self.X: X, self.y: y})
-                        print("{}/{}: loss: {}".format(i + 1, epochs, loss))
-
-                        self.sess.run(opt_op, {self.X: X, self.y: y})
-
-                    return self
-
-                def predict(self, X, y=None):
-                    if len(X.shape) == 1:
-                        X = X.reshape(-1, 1)
-
-                    y_pred = self.sess.run(self.y_pred, {self.X: X})
-                    return y_pred
-
-        svr_scratch = SVRscratch(epsilon=0.01)
-        svr_scratch.fit(X_train, y_train)
-        (
-            svr_scratch_mse_value,
-            svr_scratch_rmse_value,
-            svr_scratch_r2_value,
-            svr_scratch_mae_value,
-        ) = evaluate_model(svr_scratch, X_test, y_test)
-        st.write(f"SVR (w/o package) MSE: {svr_scratch_mse_value}")
-        st.write(f"SVR (w/o package) RMSE: {svr_scratch_rmse_value}")
-        st.write(f"SVR (w/o package) R-squared: {svr_scratch_r2_value}")
-        st.write(f"SVR (w/o package) MAE: {svr_scratch_mae_value}")
-
-        svm_scratch_predictions = svr_scratch.predict(X_test)
-        lr_scratch_predictions = lr_scratch.predict(X_test)
-        rf_scratch_predictions = rf_scratch.predict(X_test)
 
         # Plotting the results
-        plt.figure(figsize=(14, 7))
+            plt.figure(figsize=(14, 7))
 
         # Linear Regression
-        plt.subplot(3, 1, 1)
-        plt.plot(y_test, label="Actual", color="blue")
-        plt.plot(lr_scratch_predictions, label="Linear Regression", color="orange")
-        plt.title("Linear Regression ( w/o package ) vs Actual")
-        plt.legend()
+            plt.subplot(3, 1, 1)
+            plt.plot(y_test, label="Actual", color="blue")
+            plt.plot(lr_scratch_predictions, label="Linear Regression", color="orange")
+            plt.title("Linear Regression ( w/o package ) vs Actual")
+            plt.legend()
 
         # Random Forest
-        plt.subplot(3, 1, 2)
-        plt.plot(y_test, label="Actual", color="blue")
-        plt.plot(rf_scratch_predictions, label="Random Forest", color="green")
-        plt.title("Random Forest ( w/o package ) vs Actual")
-        plt.legend()
+            plt.subplot(3, 1, 2)
+            plt.plot(y_test, label="Actual", color="blue")
+            plt.plot(rf_scratch_predictions, label="Random Forest", color="green")
+            plt.title("Random Forest ( w/o package ) vs Actual")
+            plt.legend()
 
         # SVM
-        plt.subplot(3, 1, 3)
-        plt.plot(y_test, label="Actual", color="blue")
-        plt.plot(svm_scratch_predictions, label="SVR", color="red")
-        plt.title("SVR ( w/o package ) vs Actual")
-        plt.legend()
+            plt.subplot(3, 1, 3)
+            plt.plot(y_test, label="Actual", color="blue")
+            # plt.plot(svm_scratch_predictions, label="SVR", color="red")
+            plt.title("SVR ( w/o package ) vs Actual")
+            plt.legend()
 
-        plt.tight_layout()
-        plt.show()
-        st.plot(plt)
+            plt.tight_layout()
+            plt.show()
+            st.pyplot(plt)
 
 
-with Compare:
-    if future_days:
-        comparision_data = {
-            "MSE": [
-                svr_python_mse_value,
-                svr_scratch_mse_value,
-                "",
-                rf_python_mse_value,
-                rf_scratch_mse_value,
-                "",
-                lr_python_mse_value,
-                lr_scratch_mse_value,
-            ],
-            "RMSE": [
-                svr_python_rmse_value,
-                svr_scratch_rmse_value,
-                "",
-                rf_python_rmse_value,
-                rf_scratch_rmse_value,
-                "",
-                lr_python_rmse_value,
-                lr_scratch_rmse_value,
-            ],
-            "R^2": [
-                svr_python_r2_value,
-                svr_scratch_r2_value,
-                "",
-                rf_python_r2_value,
-                rf_scratch_r2_value,
-                "",
-                lr_python_r2_value,
-                lr_scratch_r2_value,
-            ],
-            "MAE": [
-                svr_python_mae_value,
-                svr_scratch_mae_value,
-                "",
-                rf_python_mae_value,
-                rf_scratch_mae_value,
-                "",
-                lr_python_mae_value,
-                lr_scratch_mae_value,
-            ],
-        }
+    with Compare:
+        if future_days:
+            comparision_data = {
+                "MSE": [
+                    # svr_python_mse_value,
+                    # svr_scratch_mse_value,
+                    "",
+                    "",
+                    "",
+                    rf_python_mse_value,
+                    rf_scratch_mse_value,
+                    "",
+                    lr_python_mse_value,
+                    lr_scratch_mse_value,
+                ],
+                "RMSE": [
+                    # svr_python_rmse_value,
+                    # svr_scratch_rmse_value,
+                    "",
+                    "",
+                    rf_python_rmse_value,
+                    rf_scratch_rmse_value,                               
+                    "",
+                    "",
+                    lr_python_rmse_value,
+                    lr_scratch_rmse_value,
+                ],
+                "R^2": [
+                    # svr_python_r2_value,
+                    # svr_scratch_r2_value,
+                    "",
+                    "",
+                    "",
+                    rf_python_r2_value,
+                    rf_scratch_r2_value,
+                    "",
+                    lr_python_r2_value,
+                    lr_scratch_r2_value,
+                ],
+                "MAE": [
+                    # svr_python_mae_value,
+                    # svr_scratch_mae_value,
+                    "",
+                    "",
+                    "",
+                    rf_python_mae_value,
+                    rf_scratch_mae_value,
+                    "",
+                    lr_python_mae_value,
+                    lr_scratch_mae_value,
+                ],
+            }
 
-        comparision_df = pd.DataFrame(comparision_data)
+            comparision_df = pd.DataFrame(comparision_data)
 
-    algo = [
-        "SVR (with package)",
-        "SVR (w/o package)",
-        "",
-        "RF (with package)",
-        "RF (w/o package)",
-        "",
-        "LR (with package)",
-        "LR (w/o package)",
-    ]
+            algo = [
+            "SVR (with package)",
+            "SVR (w/o package)",
+            "",
+            "RF (with package)",
+            "RF (w/o package)",
+            "",
+            "LR (with package)",
+            "LR (w/o package)",
+        ]
 
-    comparision_df.index = algo
+            comparision_df.index = algo
 
-    st.write(comparision_df)
+            st.write(comparision_df)
